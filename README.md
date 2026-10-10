@@ -24,7 +24,7 @@ Cienki pasek systemowy dla Windows w stylu doku PowerToys — pokazuje tylko to,
 
 ## Instalacja
 
-Pobierz `SysBarSetup.exe` z zakładki [Releases](../../releases) i uruchom.
+Pobierz [SysBarSetup.exe](SysBarSetup.exe) (jest w repozytorium oraz w zakładce [Releases](../../releases)) i uruchom.
 
 - Instaluje dla bieżącego użytkownika do `%LOCALAPPDATA%\Programs\SysBar`, bez uprawnień administratora.
 - Pyta o start razem z Windows, dodaje skrót w menu Start i wpis w „Aplikacje” (odinstalowanie).
