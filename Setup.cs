@@ -13,15 +13,15 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("SysBar - instalator")]
 [assembly: AssemblyProduct("SysBar")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 
 namespace SysBarSetup
 {
     static class Program
     {
         const string AppName = "SysBar";
-        const string Version = "1.0.0";
+        const string Version = "1.0.1";
         const string RunPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string UninstallPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\SysBar";
         const string SettingsPath = @"Software\SysBar";

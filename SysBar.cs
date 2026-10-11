@@ -529,7 +529,7 @@ namespace SysBar
         string layoutKey;
 
         IntPtr hwnd;
-        uint callbackMsg;
+        uint callbackMsg, taskbarCreatedMsg;
         bool registered, dockQueued;
         readonly string monitorName; // nazwa urzadzenia ekranu, do ktorego nalezy ten pasek
 
@@ -752,13 +752,25 @@ namespace SysBar
             Native.SetWindowLong(hwnd, Native.GWL_EXSTYLE, ex | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE);
 
             callbackMsg = Native.RegisterWindowMessage("SysBarAppBarMessage");
-            Native.APPBARDATA d = NewData();
-            d.uCallbackMessage = callbackMsg;
-            Native.SHAppBarMessage(Native.ABM_NEW, ref d);
-            registered = true;
-
+            taskbarCreatedMsg = Native.RegisterWindowMessage("TaskbarCreated");
             HwndSource.FromHwnd(hwnd).AddHook(WndProc);
-            DockBar();
+            Register();
+
+            // Rezerwacja miejsca nalezy do Eksploratora. Jesli jeszcze nie wstal (start systemu)
+            // albo zgubil rejestracje, ponawiamy az do skutku.
+            DispatcherTimer retry = new DispatcherTimer();
+            retry.Interval = TimeSpan.FromSeconds(3);
+            retry.Tick += delegate { if (!registered) Register(); };
+            retry.Start();
+        }
+
+        void Register()
+        {
+            Native.APPBARDATA d = NewData();
+            Native.SHAppBarMessage(Native.ABM_REMOVE, ref d); // bez tego ponowna rejestracja tego samego okna jest odrzucana
+            d.uCallbackMessage = callbackMsg;
+            registered = Native.SHAppBarMessage(Native.ABM_NEW, ref d) != UIntPtr.Zero;
+            if (registered) DockBar();
         }
 
         Native.APPBARDATA NewData()
@@ -818,7 +830,13 @@ namespace SysBar
 
         IntPtr WndProc(IntPtr h, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            if (msg == (int)callbackMsg)
+            if (msg == (int)taskbarCreatedMsg)
+            {
+                // Eksplorator uruchomil sie ponownie i zapomnial wszystkie paski - rejestrujemy sie od nowa.
+                registered = false;
+                Register();
+            }
+            else if (msg == (int)callbackMsg)
             {
                 int code = wParam.ToInt32();
                 if (code == Native.ABN_POSCHANGED) QueueDock();
