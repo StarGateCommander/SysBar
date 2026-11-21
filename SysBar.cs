@@ -518,7 +518,6 @@ namespace SysBar
     class BarWindow : Window
     {
         const double BarHeight = 30; // wysokosc paska w jednostkach niezaleznych od DPI
-        const string RunPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
         readonly StackPanel items = new StackPanel();
         readonly TextBlock clock = new TextBlock();
@@ -679,34 +678,6 @@ namespace SysBar
 
         // ---------- ustawienia i menu ----------
 
-        static string ExePath()
-        {
-            return Process.GetCurrentProcess().MainModule.FileName;
-        }
-
-        static bool AutostartEnabled()
-        {
-            try
-            {
-                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunPath))
-                    return k != null && k.GetValue("SysBar") != null;
-            }
-            catch { return false; }
-        }
-
-        static void SetAutostart(bool on)
-        {
-            try
-            {
-                using (RegistryKey k = Registry.CurrentUser.CreateSubKey(RunPath))
-                {
-                    if (on) k.SetValue("SysBar", "\"" + ExePath() + "\"");
-                    else k.DeleteValue("SysBar", false);
-                }
-            }
-            catch { }
-        }
-
         void BuildMenu()
         {
             ContextMenu menu = new ContextMenu();
@@ -730,8 +701,8 @@ namespace SysBar
 
                 MenuItem auto = new MenuItem();
                 auto.Header = "Uruchamiaj z Windows";
-                auto.IsChecked = AutostartEnabled();
-                auto.Click += delegate { SetAutostart(!AutostartEnabled()); };
+                auto.IsChecked = Autostart.Wanted();
+                auto.Click += delegate { Autostart.Set(!Autostart.Wanted()); };
                 menu.Items.Add(auto);
 
                 MenuItem exit = new MenuItem();
@@ -881,6 +852,79 @@ namespace SysBar
         }
     }
 
+    // Start z Windows. Zamiar uzytkownika (wlaczony / wylaczony) jest zapisany w Software\SysBar\Autostart
+    // (ustawia go instalator i menu). Pasek pilnuje, zeby wpis w ...\Run sie z nim zgadzal - jesli wpis
+    // zniknie (inny instalator, "sprzatacz", przerwana instalacja), pasek odtworzy go sam.
+    // Wylaczenie w Menedzerze zadan (StartupApproved) nie usuwa wpisu Run, wiec jest respektowane.
+    static class Autostart
+    {
+        const string AppName = "SysBar";
+        const string RunPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        const string SettingsPath = @"Software\SysBar";
+
+        static string ExePath() { return Process.GetCurrentProcess().MainModule.FileName; }
+        static string RunValue() { return "\"" + ExePath() + "\""; }
+
+        static bool RunEntryExists()
+        {
+            using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunPath))
+                return k != null && k.GetValue(AppName) != null;
+        }
+
+        static void SaveWanted(bool on)
+        {
+            using (RegistryKey k = Registry.CurrentUser.CreateSubKey(SettingsPath))
+                k.SetValue("Autostart", on ? 1 : 0, RegistryValueKind.DWord);
+        }
+
+        public static bool Wanted()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(SettingsPath))
+                {
+                    object v = k == null ? null : k.GetValue("Autostart");
+                    if (v != null) return Convert.ToInt32(v) != 0;
+                }
+                return RunEntryExists(); // starsza instalacja bez zapisanego zamiaru
+            }
+            catch { return false; }
+        }
+
+        public static void Set(bool on)
+        {
+            try
+            {
+                SaveWanted(on);
+                using (RegistryKey k = Registry.CurrentUser.CreateSubKey(RunPath))
+                {
+                    if (on) k.SetValue(AppName, RunValue());
+                    else k.DeleteValue(AppName, false);
+                }
+            }
+            catch { }
+        }
+
+        public static void Ensure()
+        {
+            try
+            {
+                bool want = Wanted();
+                SaveWanted(want); // utrwala zamiar takze dla starszych instalacji
+                if (!want) return;
+                using (RegistryKey k = Registry.CurrentUser.CreateSubKey(RunPath))
+                {
+                    string cur = k.GetValue(AppName) as string;
+                    // Brak wpisu - odtworz. Wpis wskazujacy na nieistniejacy plik (program przeniesiony) - popraw.
+                    // Wpis wskazujacy na inny istniejacy plik zostaje (np. kopia testowa uruchomiona z innego folderu).
+                    if (cur == null || !System.IO.File.Exists(cur.Trim('"')))
+                        k.SetValue(AppName, RunValue());
+                }
+            }
+            catch { }
+        }
+    }
+
     // Pilnuje, zeby na kazdym monitorze byl jeden pasek, i rozsyla do nich pomiary.
     static class Bars
     {
@@ -901,6 +945,12 @@ namespace SysBar
                     if (k != null) Bottom = Convert.ToInt32(k.GetValue("Bottom", 0)) != 0;
             }
             catch { }
+
+            Autostart.Ensure();
+            DispatcherTimer autoCheck = new DispatcherTimer();
+            autoCheck.Interval = TimeSpan.FromMinutes(10);
+            autoCheck.Tick += delegate { Autostart.Ensure(); };
+            autoCheck.Start();
 
             Reconcile();
             sampler = new Sampler(delegate(Snapshot s)
